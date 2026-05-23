@@ -16,8 +16,7 @@ The repository intentionally excludes datasets, checkpoints, logs, and generated
 ├── tools/
 │   ├── build_varlen_sid_index.py           # IST: build variable-length SID index
 │   ├── build_prefix_pair_augmentation.py   # BCA: behavior prefix-pair replay
-│   ├── build_seq2seq_sliding_dataset.py    # Build fixed-target seq2seq splits
-│   └── token_level_attention_workload_analysis.py
+│   └── build_seq2seq_sliding_dataset.py    # Build fixed-target seq2seq splits
 ├── util/                                   # Tokenizer, datacollators, evaluation/runtime helpers
 ├── llamarec/                               # Lightweight recommender backbones
 ├── quantization/                           # Minimal quantizer I/O helpers
