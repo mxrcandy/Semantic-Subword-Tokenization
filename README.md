@@ -1,11 +1,10 @@
 # Semantic Subword Tokenization
 
-This repository contains a minimal implementation for **Semantic Subword Tokenization (SST)** for generative recommendation. SST augments fixed-length Semantic IDs with:
+This repository contains a implementation for **Semantic Subword Tokenization (SST)** for generative recommendation. SST augments fixed-length Semantic IDs with:
 
 - **Item-level Subword Tokenization (IST)**: learns merge rules over adjacent SID tokens and rewrites item histories with pattern tokens.
 - **Behavior-induced Co-occurrence Augmentation (BCA)**: mines semantic-prefix transitions from user behavior and injects replay samples for training.
 
-The repository intentionally excludes datasets, checkpoints, logs, and generated experiment outputs.
 
 ## Repository Structure
 
@@ -104,8 +103,3 @@ python evaluate_single.py \
   --generation_constraint full_trie
 ```
 
-## Notes
-
-- The public repository is code-only by design.
-- Large files such as datasets, checkpoints, generated SIDs, and logs should remain outside Git.
-- Example configs are templates; update paths before running experiments.
