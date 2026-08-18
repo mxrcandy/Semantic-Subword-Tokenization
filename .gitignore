@@ -6,7 +6,6 @@ __pycache__/
 .vscode/
 .idea/
 
-data/
 experiment/
 experiments/
 logs/

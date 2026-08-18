@@ -1,10 +1,10 @@
 paths:
-  dataset_path: data/Beauty_TIGER_varlen_cond_entropy_bpe_top128_f20_s10_usage10
-  output_dir: experiment/Beauty_TIGER_varlen_cond_entropy_bpe_top128_f20_s10_usage10_seq2seq
+  dataset_path: data/Beauty_TIGER_varlen
+  output_dir: experiment/Beauty_TIGER_varlen_seq2seq_behseq
   split_data_paths:
-    train: data/Beauty_TIGER_varlen_cond_entropy_bpe_top128_f20_s10_usage10/train_seq2seq_letter_fixed_target.json
-    val: data/Beauty_TIGER_varlen_cond_entropy_bpe_top128_f20_s10_usage10/val_seq2seq_letter_fixed_target.json
-    test: data/Beauty_TIGER_varlen_cond_entropy_bpe_top128_f20_s10_usage10/test_seq2seq_letter_fixed_target.json
+    train: data/Beauty_TIGER_varlen/train_seq2seq_letter_fixed_target_behseq.json
+    val: data/Beauty_TIGER_varlen/val_seq2seq_letter_fixed_target.json
+    test: data/Beauty_TIGER_varlen/test_seq2seq_letter_fixed_target.json
 
 tokenizer:
   codeword_nums:
@@ -12,7 +12,7 @@ tokenizer:
     - 256
     - 256
     - 256
-  extra_semantic_tokens_path: data/Beauty_TIGER_varlen_cond_entropy_bpe_top128_f20_s10_usage10/varlen_meta.json
+  extra_semantic_tokens_path: data/Beauty_TIGER_varlen/varlen_meta.json
 
 model:
   model_type: t5-rec
@@ -30,7 +30,7 @@ model:
   semantic_embedding_init: none
   semantic_embedding_projection: random
   pattern_embedding_init: none
-  pattern_embedding_init_path: data/Beauty_TIGER_varlen_cond_entropy_bpe_top128_f20_s10_usage10/varlen_meta.json
+  pattern_embedding_init_path: data/Beauty_TIGER_varlen/varlen_meta.json
   pattern_embedding_freeze: false
   semantic_embedding_freeze_scope: none
 

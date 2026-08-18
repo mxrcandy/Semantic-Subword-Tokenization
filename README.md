@@ -1,105 +1,146 @@
 # Semantic Subword Tokenization
 
-This repository contains a implementation for **Semantic Subword Tokenization (SST)** for generative recommendation. SST augments fixed-length Semantic IDs with:
+Semantic Subword Tokenization (SST) is a history-side tokenization and augmentation method for generative recommendation. It starts from fixed-length semantic IDs, learns reusable semantic subwords, and uses behavior-derived replay examples to enrich training while keeping the prediction target in the original SID space.
 
-- **Item-level Subword Tokenization (IST)**: learns merge rules over adjacent SID tokens and rewrites item histories with pattern tokens.
-- **Behavior-induced Co-occurrence Augmentation (BCA)**: mines semantic-prefix transitions from user behavior and injects replay samples for training.
+![SST method overview](docs/assets/sst_method_overview.png)
+
+[View the original method figure (PDF)](docs/assets/sst_method_overview.pdf)
+
+## Method Overview
+
+A conventional generative recommender represents each item as a fixed sequence of semantic tokens, such as `<a_i><b_j><c_k><d_l>`. SST has two components:
+
+- **Item-level subword tokenization (IST):** identifies recurring semantic substructures in item identifiers and uses them to form a more compact, semantically coherent representation of user histories without changing the prediction space.
+- **Behavior-induced co-occurrence augmentation (BCA):** leverages regularities in user behavior to enrich the training signal, strengthening associations between related interests while leaving the evaluation protocol unchanged.
 
 
-## Repository Structure
+## Example Data
 
-```text
-.
-├── train_single.py                         # Train seq2seq generative recommender
-├── evaluate_single.py                      # Full-ranking generation evaluation
-├── tools/
-│   ├── build_varlen_sid_index.py           # IST: build variable-length SID index
-│   ├── build_prefix_pair_augmentation.py   # BCA: behavior prefix-pair replay
-│   └── build_seq2seq_sliding_dataset.py    # Build fixed-target seq2seq splits
-├── util/                                   # Tokenizer, datacollators, evaluation/runtime helpers
-├── llamarec/                               # Lightweight recommender backbones
-├── quantization/                           # Minimal quantizer I/O helpers
-└── pretrain_config/                        # Example training configs
-```
-
-## Data Format
-
-Prepare a dataset directory under `data/<DATASET_NAME>/` with files such as:
+`data/Beauty_TIGER/` is a runnable Beauty/TIGER example. It contains the source artifacts needed to reproduce the workflow below:
 
 ```text
-<DATASET_NAME>.index.json      # item_id -> ["<a_i>", "<b_j>", ...]
-<DATASET_NAME>.sid2pid.json    # SID string -> item ids / candidates
-<DATASET_NAME>.inter.json      # user_id -> chronological item_id sequence
-train_data.json                # optional existing seq2seq train samples
-val_data.json
-test_data.json
+Beauty.index.json       # item ID -> fixed-length TIGER RQVAE SID tokens
+Beauty.inter.json       # chronological user interaction sequences
+Beauty.sid2pid.json     # fixed SID -> item candidates for PID evaluation
+train_data.json         # corpus used to learn IST merge rules
 ```
 
-Datasets are not included in this repository.
+The example has 12,101 items and 22,363 user histories.
 
-## IST: Build Variable-Length SID Index
+## Installation
+
+Install a PyTorch build compatible with the local CUDA environment, then install the remaining dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Base: Fixed SID
+
+Generate fixed-SID seq2seq splits in the example data directory:
+
+```bash
+python tools/build_seq2seq_sliding_dataset.py \
+  --output-dir data/Beauty_TIGER \
+  --inter-path data/Beauty_TIGER/Beauty.inter.json \
+  --history-index-path data/Beauty_TIGER/Beauty.index.json \
+  --target-index-path data/Beauty_TIGER/Beauty.index.json \
+  --prefix seq2seq_letter \
+  --max-history-items 20
+```
+
+This creates `train_seq2seq_letter.json`, `val_seq2seq_letter.json`, and `test_seq2seq_letter.json`, matching `pretrain_config/Beauty_TIGER_seq2seq_t5-rec.yaml`.
+
+```bash
+python train_single.py \
+  --dataset Beauty_TIGER \
+  --model_name seq2seq_t5-rec
+
+python evaluate_single.py \
+  --dataset Beauty_TIGER \
+  --model_name seq2seq_t5-rec \
+  --checkpoint experiment/<RUN_DIR>/best_model \
+  --eval_split test \
+  --generation_constraint full_trie
+```
+
+## SST: IST + Behavior Replay
+
+### 1. Learn and apply semantic subwords
 
 ```bash
 python tools/build_varlen_sid_index.py \
   --input-dir data/Beauty_TIGER \
-  --output-dir data/Beauty_TIGER_varlen_cond_entropy \
-  --selection-strategy cond_entropy_bpe \
+  --output-dir data/Beauty_TIGER_varlen \
+  --selection-strategy bpe \
   --top-k 128 \
   --min-weighted-freq 20 \
   --min-item-support 10 \
-  --min-pattern-usage 10 \
   --overwrite
 ```
 
-Supported merge criteria include `bpe`, `wordpiece`, and `cond_entropy_bpe`.
+This generates the variable-length index, rewritten training corpus, SID mapping, and `varlen_meta.json` under `data/Beauty_TIGER_varlen/`.
 
-## Build Fixed-Target Seq2Seq Splits
-
-SST keeps target SIDs fixed-length while rewriting history-side SIDs.
+### 2. Build variable-history, fixed-target splits
 
 ```bash
 python tools/build_seq2seq_sliding_dataset.py \
-  --output-dir data/Beauty_TIGER_varlen_cond_entropy \
+  --output-dir data/Beauty_TIGER_varlen \
   --inter-path data/Beauty_TIGER/Beauty.inter.json \
-  --history-index-path data/Beauty_TIGER_varlen_cond_entropy/Beauty.index.json \
+  --history-index-path data/Beauty_TIGER_varlen/Beauty.index.json \
   --target-index-path data/Beauty_TIGER/Beauty.index.json \
   --prefix seq2seq_letter_fixed_target \
   --max-history-items 20
 ```
 
-## BCA: Build Behavior-Augmented Training Data
+### 3. Add behavior replay to training only
 
 ```bash
 python tools/build_prefix_pair_augmentation.py \
   --source-dataset-dir data/Beauty_TIGER \
-  --target-train-files data/Beauty_TIGER_varlen_cond_entropy/train_seq2seq_letter_fixed_target.json \
-  --output-suffix bca \
+  --target-train-files data/Beauty_TIGER_varlen/train_seq2seq_letter_fixed_target.json \
+  --output-suffix _behseq \
   --augmentation-mode sequence_replay \
   --prefix-tokens 2 \
   --window-size 3 \
-  --top-k 128 \
-  --min-count 3 \
+  --top-k 256 \
+  --min-count 10 \
   --max-augmentations-per-pair 50
 ```
 
-## Training
-
-Edit a YAML file under `pretrain_config/` to point to your local dataset paths, then run:
+The final training file is `data/Beauty_TIGER_varlen/train_seq2seq_letter_fixed_target_behseq.json`. Validation and test remain the unaugmented fixed-target splits.
 
 ```bash
 python train_single.py \
-  --dataset Beauty_TIGER_varlen_cond_entropy_bca \
+  --dataset Beauty_TIGER_varlen \
   --model_name seq2seq_t5-rec
-```
 
-## Evaluation
-
-```bash
 python evaluate_single.py \
-  --dataset Beauty_TIGER_varlen_cond_entropy_bca \
+  --dataset Beauty_TIGER_varlen \
   --model_name seq2seq_t5-rec \
   --checkpoint experiment/<RUN_DIR>/best_model \
   --eval_split test \
   --generation_constraint full_trie
+```
+
+`pretrain_config/Beauty_TIGER_varlen_seq2seq_t5-rec.yaml` is preconfigured for these generated paths.
+
+## Repository Layout
+
+```text
+.
+├── data/Beauty_TIGER/                       # tracked Beauty/TIGER example source data
+├── docs/assets/                              # SST method figure (PNG and PDF)
+├── pretrain_config/
+│   ├── Beauty_TIGER_seq2seq_t5-rec.yaml    # fixed-SID base
+│   └── Beauty_TIGER_varlen_seq2seq_t5-rec.yaml # generated SST data
+├── util/                                     # tokenization, collation, runtime, and evaluation helpers
+├── quantization/                             # optional semantic-ID preparation utilities
+├── tools/
+│   ├── build_varlen_sid_index.py
+│   ├── build_seq2seq_sliding_dataset.py
+│   └── build_prefix_pair_augmentation.py
+├── train_single.py
+└── evaluate_single.py
 ```
 
